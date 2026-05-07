@@ -322,26 +322,39 @@ impl AppState {
         }
     }
 
-    /// Collect agent panes globally in (workspace, tab, pane-creation) order.
-    /// A pane counts as an agent pane when its effective agent label is set
-    /// (matching the sidebar's "all workspaces" agent panel).
-    fn agent_pane_locations(&self) -> Vec<(usize, usize, PaneId)> {
+    /// Collect agent panes globally in (workspace, tab, pane-creation) order,
+    /// optionally filtered by predicate. A pane counts as an agent pane when
+    /// its effective agent label is set (matching the sidebar's "all
+    /// workspaces" agent panel).
+    fn agent_pane_locations_filtered<F>(&self, mut keep: F) -> Vec<(usize, usize, PaneId)>
+    where
+        F: FnMut(&crate::pane::PaneState) -> bool,
+    {
         let mut out = Vec::new();
         for (ws_idx, ws) in self.workspaces.iter().enumerate() {
             for (tab_idx, tab) in ws.tabs.iter().enumerate() {
                 for pane_id in tab.layout.pane_ids() {
-                    if tab
-                        .panes
-                        .get(&pane_id)
-                        .and_then(|pane| pane.effective_agent_label())
-                        .is_some()
-                    {
+                    let Some(pane) = tab.panes.get(&pane_id) else {
+                        continue;
+                    };
+                    if pane.effective_agent_label().is_none() {
+                        continue;
+                    }
+                    if keep(pane) {
                         out.push((ws_idx, tab_idx, pane_id));
                     }
                 }
             }
         }
         out
+    }
+
+    fn agent_pane_locations(&self) -> Vec<(usize, usize, PaneId)> {
+        self.agent_pane_locations_filtered(|_| true)
+    }
+
+    fn blocked_agent_pane_locations(&self) -> Vec<(usize, usize, PaneId)> {
+        self.agent_pane_locations_filtered(|pane| pane.state == AgentState::Blocked)
     }
 
     fn focus_agent_pane_at(&mut self, ws_idx: usize, tab_idx: usize, pane_id: PaneId) {
@@ -363,20 +376,22 @@ impl AppState {
         self.mark_session_dirty();
     }
 
-    pub fn next_agent(&mut self) {
-        let locations = self.agent_pane_locations();
-        if locations.is_empty() {
-            return;
-        }
-        let current_pos = self.active.and_then(|ws_idx| {
+    fn current_pane_position(&self, locations: &[(usize, usize, PaneId)]) -> Option<usize> {
+        self.active.and_then(|ws_idx| {
             let ws = self.workspaces.get(ws_idx)?;
             let pane_id = ws.focused_pane_id()?;
             let tab_idx = ws.find_tab_index_for_pane(pane_id)?;
             locations
                 .iter()
                 .position(|loc| *loc == (ws_idx, tab_idx, pane_id))
-        });
-        let next_idx = match current_pos {
+        })
+    }
+
+    fn focus_next_in(&mut self, locations: Vec<(usize, usize, PaneId)>) {
+        if locations.is_empty() {
+            return;
+        }
+        let next_idx = match self.current_pane_position(&locations) {
             Some(pos) => (pos + 1) % locations.len(),
             None => 0,
         };
@@ -384,26 +399,37 @@ impl AppState {
         self.focus_agent_pane_at(ws_idx, tab_idx, pane_id);
     }
 
-    pub fn previous_agent(&mut self) {
-        let locations = self.agent_pane_locations();
+    fn focus_previous_in(&mut self, locations: Vec<(usize, usize, PaneId)>) {
         if locations.is_empty() {
             return;
         }
-        let current_pos = self.active.and_then(|ws_idx| {
-            let ws = self.workspaces.get(ws_idx)?;
-            let pane_id = ws.focused_pane_id()?;
-            let tab_idx = ws.find_tab_index_for_pane(pane_id)?;
-            locations
-                .iter()
-                .position(|loc| *loc == (ws_idx, tab_idx, pane_id))
-        });
-        let prev_idx = match current_pos {
+        let prev_idx = match self.current_pane_position(&locations) {
             Some(0) => locations.len() - 1,
             Some(pos) => pos - 1,
             None => locations.len() - 1,
         };
         let (ws_idx, tab_idx, pane_id) = locations[prev_idx];
         self.focus_agent_pane_at(ws_idx, tab_idx, pane_id);
+    }
+
+    pub fn next_agent(&mut self) {
+        let locations = self.agent_pane_locations();
+        self.focus_next_in(locations);
+    }
+
+    pub fn previous_agent(&mut self) {
+        let locations = self.agent_pane_locations();
+        self.focus_previous_in(locations);
+    }
+
+    pub fn next_blocked_agent(&mut self) {
+        let locations = self.blocked_agent_pane_locations();
+        self.focus_next_in(locations);
+    }
+
+    pub fn previous_blocked_agent(&mut self) {
+        let locations = self.blocked_agent_pane_locations();
+        self.focus_previous_in(locations);
     }
 
     pub fn close_selected_workspace(&mut self) {
@@ -1377,6 +1403,71 @@ mod tests {
         state.active = Some(0);
 
         state.next_agent();
+        assert_eq!(state.active, Some(1));
+        assert_eq!(state.workspaces[1].focused_pane_id(), Some(ws1_pane));
+    }
+
+    fn set_pane_state(state: &mut AppState, ws_idx: usize, pane_id: PaneId, new: AgentState) {
+        let pane = state.workspaces[ws_idx]
+            .tabs
+            .iter_mut()
+            .find_map(|tab| tab.panes.get_mut(&pane_id))
+            .unwrap();
+        pane.state = new;
+    }
+
+    #[test]
+    fn next_blocked_agent_skips_non_blocked_panes() {
+        let mut state = app_with_workspaces(&["a", "b", "c"]);
+        let ws0_pane = *state.workspaces[0].panes.keys().next().unwrap();
+        let ws1_pane = *state.workspaces[1].panes.keys().next().unwrap();
+        let ws2_pane = *state.workspaces[2].panes.keys().next().unwrap();
+        mark_pane_as_agent(&mut state, 0, ws0_pane);
+        mark_pane_as_agent(&mut state, 1, ws1_pane);
+        mark_pane_as_agent(&mut state, 2, ws2_pane);
+        // Only ws0 and ws2 are blocked; ws1 is working.
+        set_pane_state(&mut state, 0, ws0_pane, AgentState::Blocked);
+        set_pane_state(&mut state, 1, ws1_pane, AgentState::Working);
+        set_pane_state(&mut state, 2, ws2_pane, AgentState::Blocked);
+
+        state.active = Some(0);
+        state.workspaces[0].tabs[0].layout.focus_pane(ws0_pane);
+
+        state.next_blocked_agent();
+        assert_eq!(state.active, Some(2));
+        assert_eq!(state.workspaces[2].focused_pane_id(), Some(ws2_pane));
+
+        state.next_blocked_agent();
+        assert_eq!(state.active, Some(0));
+        assert_eq!(state.workspaces[0].focused_pane_id(), Some(ws0_pane));
+    }
+
+    #[test]
+    fn next_blocked_agent_with_no_blocked_panes_is_noop() {
+        let mut state = app_with_workspaces(&["a"]);
+        let pane_id = *state.workspaces[0].panes.keys().next().unwrap();
+        mark_pane_as_agent(&mut state, 0, pane_id);
+        set_pane_state(&mut state, 0, pane_id, AgentState::Working);
+
+        state.active = Some(0);
+        state.next_blocked_agent();
+        assert_eq!(state.active, Some(0));
+    }
+
+    #[test]
+    fn previous_blocked_agent_wraps_among_blocked_panes() {
+        let mut state = app_with_workspaces(&["a", "b"]);
+        let ws0_pane = *state.workspaces[0].panes.keys().next().unwrap();
+        let ws1_pane = *state.workspaces[1].panes.keys().next().unwrap();
+        mark_pane_as_agent(&mut state, 0, ws0_pane);
+        mark_pane_as_agent(&mut state, 1, ws1_pane);
+        set_pane_state(&mut state, 0, ws0_pane, AgentState::Blocked);
+        set_pane_state(&mut state, 1, ws1_pane, AgentState::Blocked);
+
+        state.active = Some(0);
+        state.workspaces[0].tabs[0].layout.focus_pane(ws0_pane);
+
+        state.previous_blocked_agent();
         assert_eq!(state.active, Some(1));
         assert_eq!(state.workspaces[1].focused_pane_id(), Some(ws1_pane));
     }

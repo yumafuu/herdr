@@ -93,6 +93,10 @@ pub struct Keybinds {
     pub previous_agent_label: Option<String>,
     pub next_agent: Option<(KeyCode, KeyModifiers)>,
     pub next_agent_label: Option<String>,
+    pub previous_blocked_agent: Option<(KeyCode, KeyModifiers)>,
+    pub previous_blocked_agent_label: Option<String>,
+    pub next_blocked_agent: Option<(KeyCode, KeyModifiers)>,
+    pub next_blocked_agent_label: Option<String>,
     pub split_vertical: (KeyCode, KeyModifiers),
     pub split_vertical_label: String,
     pub split_horizontal: (KeyCode, KeyModifiers),
@@ -419,6 +423,18 @@ impl Config {
                 &self.keys.next_agent,
                 &mut diagnostics,
             ),
+            optional_binding(
+                BindingScope::TerminalDirect,
+                "keys.previous_blocked_agent",
+                &self.keys.previous_blocked_agent,
+                &mut diagnostics,
+            ),
+            optional_binding(
+                BindingScope::TerminalDirect,
+                "keys.next_blocked_agent",
+                &self.keys.next_blocked_agent,
+                &mut diagnostics,
+            ),
         ];
 
         let mut registry = BindingRegistry::default();
@@ -630,6 +646,10 @@ impl Config {
             previous_agent_label: optional_bindings[12].label.clone(),
             next_agent: optional_bindings[13].value,
             next_agent_label: optional_bindings[13].label.clone(),
+            previous_blocked_agent: optional_bindings[14].value,
+            previous_blocked_agent_label: optional_bindings[14].label.clone(),
+            next_blocked_agent: optional_bindings[15].value,
+            next_blocked_agent_label: optional_bindings[15].label.clone(),
             split_vertical: bindings[4].value,
             split_vertical_label: bindings[4].label.clone(),
             split_horizontal: bindings[5].value,

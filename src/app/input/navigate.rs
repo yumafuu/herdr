@@ -78,6 +78,18 @@ pub(crate) fn terminal_direct_navigation_action(
     {
         return Some(NavigateAction::NextAgent);
     }
+    if kb
+        .previous_blocked_agent
+        .is_some_and(|(code, mods)| key_matches(key, code, mods))
+    {
+        return Some(NavigateAction::PreviousBlockedAgent);
+    }
+    if kb
+        .next_blocked_agent
+        .is_some_and(|(code, mods)| key_matches(key, code, mods))
+    {
+        return Some(NavigateAction::NextBlockedAgent);
+    }
     None
 }
 
@@ -385,6 +397,8 @@ pub(crate) enum NavigateAction {
     FocusPaneRight,
     PreviousAgent,
     NextAgent,
+    PreviousBlockedAgent,
+    NextBlockedAgent,
     SplitVertical,
     SplitHorizontal,
     ClosePane,
@@ -456,6 +470,18 @@ fn navigate_action_for_key(state: &AppState, key: &KeyEvent) -> Option<NavigateA
         .is_some_and(|(code, mods)| key_matches(key, code, mods))
     {
         return Some(NavigateAction::NextAgent);
+    }
+    if kb
+        .previous_blocked_agent
+        .is_some_and(|(code, mods)| key_matches(key, code, mods))
+    {
+        return Some(NavigateAction::PreviousBlockedAgent);
+    }
+    if kb
+        .next_blocked_agent
+        .is_some_and(|(code, mods)| key_matches(key, code, mods))
+    {
+        return Some(NavigateAction::NextBlockedAgent);
     }
     if key_matches(key, kb.split_vertical.0, kb.split_vertical.1) {
         return Some(NavigateAction::SplitVertical);
@@ -543,6 +569,14 @@ pub(super) fn execute_navigate_action(state: &mut AppState, action: NavigateActi
         }
         NavigateAction::NextAgent => {
             state.next_agent();
+            leave_navigate_mode(state);
+        }
+        NavigateAction::PreviousBlockedAgent => {
+            state.previous_blocked_agent();
+            leave_navigate_mode(state);
+        }
+        NavigateAction::NextBlockedAgent => {
+            state.next_blocked_agent();
             leave_navigate_mode(state);
         }
         NavigateAction::SplitVertical => {

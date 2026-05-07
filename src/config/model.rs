@@ -107,6 +107,12 @@ pub struct KeysConfig {
     /// Focus the next agent pane (cycles globally across workspaces/tabs).
     /// Unset by default.
     pub next_agent: String,
+    /// Focus the previous agent pane in the Blocked state
+    /// (cycles globally across workspaces/tabs). Unset by default.
+    pub previous_blocked_agent: String,
+    /// Focus the next agent pane in the Blocked state
+    /// (cycles globally across workspaces/tabs). Unset by default.
+    pub next_blocked_agent: String,
     /// Split pane vertically (side by side). Default: "v"
     pub split_vertical: String,
     /// Split pane horizontally (stacked). Default: "-"
@@ -172,6 +178,8 @@ impl Default for KeysConfig {
             focus_pane_right: "".into(),
             previous_agent: "".into(),
             next_agent: "".into(),
+            previous_blocked_agent: "".into(),
+            next_blocked_agent: "".into(),
             split_vertical: "v".into(),
             split_horizontal: "-".into(),
             close_pane: "x".into(),
