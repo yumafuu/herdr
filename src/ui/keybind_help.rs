@@ -101,6 +101,22 @@ pub(super) fn keybind_help_groups(
             optional_keybind_label(&kb.focus_pane_right_label),
             "focus pane right",
         ),
+        (
+            optional_keybind_label(&kb.previous_agent_label),
+            "previous agent pane",
+        ),
+        (
+            optional_keybind_label(&kb.next_agent_label),
+            "next agent pane",
+        ),
+        (
+            optional_keybind_label(&kb.previous_blocked_agent_label),
+            "previous blocked agent pane",
+        ),
+        (
+            optional_keybind_label(&kb.next_blocked_agent_label),
+            "next blocked agent pane",
+        ),
     ];
     groups.push(("panes", panes));
 

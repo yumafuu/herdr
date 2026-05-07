@@ -109,6 +109,10 @@ focus_pane_left = "alt+h"
 focus_pane_down = "alt+j"
 focus_pane_up = "alt+k"
 focus_pane_right = "alt+l"
+previous_agent = "alt+,"
+next_agent = "alt+."
+previous_blocked_agent = "alt+<"
+next_blocked_agent = "alt+>"
 ```
 
 ### key reference
@@ -132,6 +136,10 @@ focus_pane_right = "alt+l"
 | `focus_pane_down` | unset | focus the pane below directly from terminal mode |
 | `focus_pane_up` | unset | focus the pane above directly from terminal mode |
 | `focus_pane_right` | unset | focus the pane to the right directly from terminal mode |
+| `previous_agent` | unset | focus the previous agent pane (cycles globally across workspaces and tabs) |
+| `next_agent` | unset | focus the next agent pane (cycles globally across workspaces and tabs) |
+| `previous_blocked_agent` | unset | focus the previous agent pane in the blocked state (cycles globally) |
+| `next_blocked_agent` | unset | focus the next agent pane in the blocked state (cycles globally) |
 | `split_vertical` | `v` | split pane vertically (side by side) |
 | `split_horizontal` | `-` | split pane horizontally (stacked) |
 | `close_pane` | `x` | close focused pane |
