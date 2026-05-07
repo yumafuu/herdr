@@ -322,6 +322,90 @@ impl AppState {
         }
     }
 
+    /// Collect agent panes globally in (workspace, tab, pane-creation) order.
+    /// A pane counts as an agent pane when its effective agent label is set
+    /// (matching the sidebar's "all workspaces" agent panel).
+    fn agent_pane_locations(&self) -> Vec<(usize, usize, PaneId)> {
+        let mut out = Vec::new();
+        for (ws_idx, ws) in self.workspaces.iter().enumerate() {
+            for (tab_idx, tab) in ws.tabs.iter().enumerate() {
+                for pane_id in tab.layout.pane_ids() {
+                    if tab
+                        .panes
+                        .get(&pane_id)
+                        .and_then(|pane| pane.effective_agent_label())
+                        .is_some()
+                    {
+                        out.push((ws_idx, tab_idx, pane_id));
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    fn focus_agent_pane_at(&mut self, ws_idx: usize, tab_idx: usize, pane_id: PaneId) {
+        if Some(ws_idx) != self.active {
+            self.switch_workspace(ws_idx);
+        }
+        if let Some(ws) = self.workspaces.get(ws_idx) {
+            if ws.active_tab != tab_idx {
+                self.switch_tab(tab_idx);
+            }
+        }
+        if let Some(tab) = self
+            .workspaces
+            .get_mut(ws_idx)
+            .and_then(|ws| ws.tabs.get_mut(tab_idx))
+        {
+            tab.layout.focus_pane(pane_id);
+        }
+        self.mark_session_dirty();
+    }
+
+    pub fn next_agent(&mut self) {
+        let locations = self.agent_pane_locations();
+        if locations.is_empty() {
+            return;
+        }
+        let current_pos = self.active.and_then(|ws_idx| {
+            let ws = self.workspaces.get(ws_idx)?;
+            let pane_id = ws.focused_pane_id()?;
+            let tab_idx = ws.find_tab_index_for_pane(pane_id)?;
+            locations
+                .iter()
+                .position(|loc| *loc == (ws_idx, tab_idx, pane_id))
+        });
+        let next_idx = match current_pos {
+            Some(pos) => (pos + 1) % locations.len(),
+            None => 0,
+        };
+        let (ws_idx, tab_idx, pane_id) = locations[next_idx];
+        self.focus_agent_pane_at(ws_idx, tab_idx, pane_id);
+    }
+
+    pub fn previous_agent(&mut self) {
+        let locations = self.agent_pane_locations();
+        if locations.is_empty() {
+            return;
+        }
+        let current_pos = self.active.and_then(|ws_idx| {
+            let ws = self.workspaces.get(ws_idx)?;
+            let pane_id = ws.focused_pane_id()?;
+            let tab_idx = ws.find_tab_index_for_pane(pane_id)?;
+            locations
+                .iter()
+                .position(|loc| *loc == (ws_idx, tab_idx, pane_id))
+        });
+        let prev_idx = match current_pos {
+            Some(0) => locations.len() - 1,
+            Some(pos) => pos - 1,
+            None => locations.len() - 1,
+        };
+        let (ws_idx, tab_idx, pane_id) = locations[prev_idx];
+        self.focus_agent_pane_at(ws_idx, tab_idx, pane_id);
+    }
+
     pub fn close_selected_workspace(&mut self) {
         if self.workspaces.is_empty() {
             return;
@@ -1217,5 +1301,83 @@ mod tests {
 
         state.close_pane();
         assert_eq!(state.workspaces[0].panes.len(), 1);
+    }
+
+    fn mark_pane_as_agent(state: &mut AppState, ws_idx: usize, pane_id: PaneId) {
+        let pane = state.workspaces[ws_idx]
+            .tabs
+            .iter_mut()
+            .find_map(|tab| tab.panes.get_mut(&pane_id))
+            .unwrap();
+        pane.detected_agent = Some(Agent::Pi);
+    }
+
+    #[test]
+    fn next_agent_with_no_detected_panes_is_noop() {
+        let mut state = app_with_workspaces(&["a"]);
+        state.next_agent();
+        assert_eq!(state.active, Some(0));
+    }
+
+    #[test]
+    fn next_agent_cycles_across_workspaces_and_tabs() {
+        let mut state = app_with_workspaces(&["a", "b"]);
+
+        let ws0_pane = *state.workspaces[0].panes.keys().next().unwrap();
+        let ws1_tab1_pane = *state.workspaces[1].panes.keys().next().unwrap();
+        let ws1_tab2_idx = state.workspaces[1].test_add_tab(Some("logs"));
+        let ws1_tab2_pane = state.workspaces[1].tabs[ws1_tab2_idx].root_pane;
+
+        mark_pane_as_agent(&mut state, 0, ws0_pane);
+        mark_pane_as_agent(&mut state, 1, ws1_tab1_pane);
+        mark_pane_as_agent(&mut state, 1, ws1_tab2_pane);
+
+        // Start focused on ws0's only pane (an agent pane).
+        state.workspaces[0].tabs[0].layout.focus_pane(ws0_pane);
+        state.active = Some(0);
+
+        // Forward: ws0/tab0 -> ws1/tab0 -> ws1/tab1 -> wrap to ws0/tab0.
+        state.next_agent();
+        assert_eq!(state.active, Some(1));
+        assert_eq!(state.workspaces[1].active_tab, 0);
+        assert_eq!(state.workspaces[1].focused_pane_id(), Some(ws1_tab1_pane));
+
+        state.next_agent();
+        assert_eq!(state.active, Some(1));
+        assert_eq!(state.workspaces[1].active_tab, ws1_tab2_idx);
+        assert_eq!(state.workspaces[1].focused_pane_id(), Some(ws1_tab2_pane));
+
+        state.next_agent();
+        assert_eq!(state.active, Some(0));
+        assert_eq!(state.workspaces[0].focused_pane_id(), Some(ws0_pane));
+    }
+
+    #[test]
+    fn previous_agent_wraps_to_last() {
+        let mut state = app_with_workspaces(&["a", "b"]);
+        let ws0_pane = *state.workspaces[0].panes.keys().next().unwrap();
+        let ws1_pane = *state.workspaces[1].panes.keys().next().unwrap();
+        mark_pane_as_agent(&mut state, 0, ws0_pane);
+        mark_pane_as_agent(&mut state, 1, ws1_pane);
+
+        state.active = Some(0);
+        state.workspaces[0].tabs[0].layout.focus_pane(ws0_pane);
+
+        state.previous_agent();
+        assert_eq!(state.active, Some(1));
+        assert_eq!(state.workspaces[1].focused_pane_id(), Some(ws1_pane));
+    }
+
+    #[test]
+    fn next_agent_from_non_agent_focus_jumps_to_first_agent() {
+        let mut state = app_with_workspaces(&["a", "b"]);
+        let ws1_pane = *state.workspaces[1].panes.keys().next().unwrap();
+        mark_pane_as_agent(&mut state, 1, ws1_pane);
+
+        state.active = Some(0);
+
+        state.next_agent();
+        assert_eq!(state.active, Some(1));
+        assert_eq!(state.workspaces[1].focused_pane_id(), Some(ws1_pane));
     }
 }

@@ -89,6 +89,10 @@ pub struct Keybinds {
     pub focus_pane_up_label: Option<String>,
     pub focus_pane_right: Option<(KeyCode, KeyModifiers)>,
     pub focus_pane_right_label: Option<String>,
+    pub previous_agent: Option<(KeyCode, KeyModifiers)>,
+    pub previous_agent_label: Option<String>,
+    pub next_agent: Option<(KeyCode, KeyModifiers)>,
+    pub next_agent_label: Option<String>,
     pub split_vertical: (KeyCode, KeyModifiers),
     pub split_vertical_label: String,
     pub split_horizontal: (KeyCode, KeyModifiers),
@@ -403,6 +407,18 @@ impl Config {
                 &self.keys.focus_pane_right,
                 &mut diagnostics,
             ),
+            optional_binding(
+                BindingScope::TerminalDirect,
+                "keys.previous_agent",
+                &self.keys.previous_agent,
+                &mut diagnostics,
+            ),
+            optional_binding(
+                BindingScope::TerminalDirect,
+                "keys.next_agent",
+                &self.keys.next_agent,
+                &mut diagnostics,
+            ),
         ];
 
         let mut registry = BindingRegistry::default();
@@ -610,6 +626,10 @@ impl Config {
             focus_pane_up_label: optional_bindings[10].label.clone(),
             focus_pane_right: optional_bindings[11].value,
             focus_pane_right_label: optional_bindings[11].label.clone(),
+            previous_agent: optional_bindings[12].value,
+            previous_agent_label: optional_bindings[12].label.clone(),
+            next_agent: optional_bindings[13].value,
+            next_agent_label: optional_bindings[13].label.clone(),
             split_vertical: bindings[4].value,
             split_vertical_label: bindings[4].label.clone(),
             split_horizontal: bindings[5].value,

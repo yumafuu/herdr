@@ -66,6 +66,18 @@ pub(crate) fn terminal_direct_navigation_action(
     {
         return Some(NavigateAction::FocusPaneRight);
     }
+    if kb
+        .previous_agent
+        .is_some_and(|(code, mods)| key_matches(key, code, mods))
+    {
+        return Some(NavigateAction::PreviousAgent);
+    }
+    if kb
+        .next_agent
+        .is_some_and(|(code, mods)| key_matches(key, code, mods))
+    {
+        return Some(NavigateAction::NextAgent);
+    }
     None
 }
 
@@ -371,6 +383,8 @@ pub(crate) enum NavigateAction {
     FocusPaneDown,
     FocusPaneUp,
     FocusPaneRight,
+    PreviousAgent,
+    NextAgent,
     SplitVertical,
     SplitHorizontal,
     ClosePane,
@@ -430,6 +444,18 @@ fn navigate_action_for_key(state: &AppState, key: &KeyEvent) -> Option<NavigateA
         .is_some_and(|(code, mods)| key_matches(key, code, mods))
     {
         return Some(NavigateAction::CloseTab);
+    }
+    if kb
+        .previous_agent
+        .is_some_and(|(code, mods)| key_matches(key, code, mods))
+    {
+        return Some(NavigateAction::PreviousAgent);
+    }
+    if kb
+        .next_agent
+        .is_some_and(|(code, mods)| key_matches(key, code, mods))
+    {
+        return Some(NavigateAction::NextAgent);
     }
     if key_matches(key, kb.split_vertical.0, kb.split_vertical.1) {
         return Some(NavigateAction::SplitVertical);
@@ -511,6 +537,14 @@ pub(super) fn execute_navigate_action(state: &mut AppState, action: NavigateActi
         NavigateAction::FocusPaneDown => state.navigate_pane(NavDirection::Down),
         NavigateAction::FocusPaneUp => state.navigate_pane(NavDirection::Up),
         NavigateAction::FocusPaneRight => state.navigate_pane(NavDirection::Right),
+        NavigateAction::PreviousAgent => {
+            state.previous_agent();
+            leave_navigate_mode(state);
+        }
+        NavigateAction::NextAgent => {
+            state.next_agent();
+            leave_navigate_mode(state);
+        }
         NavigateAction::SplitVertical => {
             state.split_pane(Direction::Horizontal);
             leave_navigate_mode(state);
